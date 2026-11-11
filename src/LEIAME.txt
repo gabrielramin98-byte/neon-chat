@@ -1,0 +1,192 @@
+================================================================
+ CHAT MULTIUSUARIO COM SALAS VIA SOCKETS TCP
+ Sistemas Distribuidos - Prof. Jose Martins Junior
+================================================================
+
+REQUISITOS
+  JDK 17 ou superior (testado com OpenJDK 21).
+  Verifique com:  javac -version
+  A versao grafica usa apenas o Swing, que ja vem no JDK.
+
+ARQUIVOS
+  Comunicacao (usados pelas duas versoes, terminal e grafica)
+  Protocolo.java         tratamento das mensagens textuais (byte stuffing)
+  Servidor.java          aplicacao servidora (thread principal / accept)
+  ThreadCliente.java     thread de atendimento (uma por cliente conectado)
+  Sala.java              sala: participantes + historico (dados comuns)
+  Arquivo.java           arquivo guardado no servidor + utilitarios (Base64)
+  Emoticons.java         atalhos de emoticons (:) <3 ...) e lista do seletor
+
+  Cliente de terminal
+  Cliente.java           aplicacao cliente (thread de teclado)
+  ThreadRecebimento.java thread de escuta do socket no cliente
+
+  Versao grafica (telas)
+  ChatApp.java           tela inicial: iniciar servidor / entrar no chat
+  TelaServidor.java      painel do servidor: porta, log, usuarios, salas, aviso
+  TelaConexao.java       tela de entrada: IP, porta, apelido e sala (faz o LOGIN)
+  TelaChat.java          tela de chat: salas, mensagens, usuarios, privado
+                         (contem a ThreadEscuta, thread de escuta do socket)
+  Estilo.java            cores e componentes visuais (sem comunicacao)
+
+COMPILACAO
+  javac -encoding UTF-8 -d bin src/*.java
+
+EXECUCAO - VERSAO GRAFICA
+  java -cp bin ChatApp
+      Abre a tela inicial. Clique em "Iniciar servidor" e depois em
+      "Entrar no chat" quantas vezes quiser (um usuario por janela).
+
+  Atalhos:
+      java -cp bin ChatApp servidor     abre direto o painel do servidor
+      java -cp bin ChatApp cliente      abre direto a tela de conexao
+
+  Em rede: o painel do servidor mostra os IPs da maquina no topo.
+  Nas outras maquinas, informe esse IP na tela "Entrar no chat".
+
+EXECUCAO - VERSAO TERMINAL
+  Terminal 1 (servidor):
+      java -cp bin Servidor 5050
+
+  Terminal 2 (cliente 1):
+      java -cp bin Cliente 127.0.0.1 5050
+
+  Terminal 3 (cliente 2):
+      java -cp bin Cliente 127.0.0.1 5050
+
+  Em rede, substitua 127.0.0.1 pelo IP da maquina do servidor
+  (use "ip addr" no Linux ou "ipconfig" no Windows).
+
+  PORTA: o padrao e' 5050. Evite a 5000 no macOS, pois ela e' ocupada
+  pelo Receptor AirPlay do sistema. Se a porta estiver em uso, o
+  servidor avisa; basta escolher outra (ex.: 6000).
+
+  As duas versoes falam o mesmo protocolo: clientes de terminal e
+  graficos podem conversar entre si no mesmo servidor, e o painel
+  grafico do servidor atende clientes de terminal (e vice-versa).
+
+COMANDOS DO CLIENTE (terminal e caixa de texto da tela de chat)
+  /login <apelido>        identifica-se no servidor (so terminal; na
+                          tela grafica o login e' feito na conexao)
+  /join <sala>            entra na sala (cria se nao existir)
+  /users                  lista os usuarios da sala atual
+  /salas                  lista as salas ativas no servidor
+  /hist <n>               exibe as ultimas n mensagens da sala
+  /msg <apelido> <texto>  mensagem privada para um usuario
+  /sair                   encerra a sessao
+  <qualquer texto>        envia mensagem para a sala atual
+
+  Arquivos e emoticons
+  /arquivo <caminho>             envia um arquivo para a sala (terminal)
+  /arqmsg <apelido> <caminho>    envia um arquivo privado (terminal)
+  /baixar <id>                   baixa o arquivo para a pasta recebidos/
+                                 (terminal)
+  /arquivo [apelido]             abre a escolha de arquivo; sem apelido
+                                 vai para a sala, com apelido e' privado
+                                 (tela grafica)
+  /emojis                        lista os atalhos de emoticons
+
+  Na tela grafica tambem da para: clicar numa sala para entrar,
+  criar sala pelo campo "nova sala" e dar duplo clique num usuario
+  para mandar mensagem privada. /ajuda lista os comandos.
+  O botao do clipe envia um arquivo para a sala; o botao do rostinho
+  abre o seletor de emoticons. Arquivos aparecem no chat como link:
+  clique para baixar (imagens abrem uma pre-visualizacao antes de salvar).
+
+EMOTICONS
+  Os emojis sao caracteres Unicode e viajam no campo TEXT como qualquer
+  texto (o socket usa UTF-8): o protocolo nao muda. Os clientes trocam
+  os atalhos digitados pelo emoji antes de enviar:
+    :) 🙂   :D 😀   xD 😆   ;) 😉   :( 🙁   :'( 😢   :P 😛   :O 😮
+    :* 😘   B) 😎   :| 😐   <3 💖   (y) 👍   (n) 👎
+  O atalho so e' trocado quando esta isolado entre espacos, para nao
+  estragar textos como "http://..." ou "a:b".
+
+ARQUIVOS
+  O protocolo e' textual (uma mensagem por linha), entao o conteudo do
+  arquivo vai codificado em Base64 no campo DATA. O '=' do Base64 e' um
+  caractere reservado e e' tratado pelo byte stuffing, como qualquer outro.
+  O servidor guarda o arquivo com um numero (ID) e repassa aos outros
+  apenas o aviso (ID, nome e tamanho); cada um baixa o conteudo quando
+  quiser com GET. Assim ninguem recebe megabytes que nao pediu e quem
+  entra depois na sala tambem consegue baixar (o aviso fica no historico).
+  Limites: 5 MB por arquivo; o servidor guarda os 40 arquivos mais
+  recentes. Arquivo privado so pode ser baixado pelo remetente e pelo
+  destinatario.
+
+MENSAGENS DO PROTOCOLO (uma linha, pares CAMPO=valor separados por ';')
+  Cliente -> servidor
+    CMD=LOGIN;USER=<apelido>
+    CMD=JOIN;ROOM=<sala>
+    CMD=MSG;TEXT=<texto>
+    CMD=PRIV;TO=<apelido>;TEXT=<texto>
+    CMD=USERS
+    CMD=ROOMS
+    CMD=HIST;N=<quantidade>
+    CMD=FILE;NAME=<nome>;DATA=<base64>                (para a sala)
+    CMD=FILE;TO=<apelido>;NAME=<nome>;DATA=<base64>   (privado)
+    CMD=GET;ID=<id>
+    CMD=QUIT
+
+  Servidor -> cliente
+    CMD=OK;INFO=<texto>                      (HIST inclui tambem N=<qtd>;
+                                              FILE inclui ID=<id>;SIZE=<bytes>)
+    CMD=ERR;COD=<codigo>;INFO=<texto>
+    CMD=MSG;FROM=<apelido>;TS=<hh:mm>;TEXT=<texto>
+    CMD=PRIV;FROM=<apelido>;TO=<apelido>;TS=<hh:mm>;TEXT=<texto>
+    CMD=NOTIF;INFO=<texto>
+    CMD=USERS;ROOM=<sala>;LIST=<apelido1,apelido2,...>
+    CMD=ROOMS;LIST=<sala1,sala2,...>
+    CMD=FILE;ID=<id>;FROM=<apelido>;TS=<hh:mm>;NAME=<nome>;SIZE=<bytes>
+                                             (com TO=<apelido> se privado)
+    CMD=FILEDATA;ID=<id>;NAME=<nome>;DATA=<base64>   (resposta ao GET)
+
+  Cada comando recebe exatamente uma resposta direta (OK, ERR, USERS,
+  ROOMS ou FILEDATA), na ordem em que foi enviado. MSG, PRIV, FILE e
+  NOTIF chegam a qualquer momento, enviadas pelo servidor em nome de
+  outros clientes.
+
+ROTEIRO DE TESTE SUGERIDO (para a demonstracao)
+  1. Iniciar o servidor e conectar dois clientes.
+  2. /login joao  e  /login maria
+  3. Repetir /login maria em um terceiro cliente -> erro 02 (apelido em uso)
+  4. Ambos: /join geral  -> o outro recebe a notificacao de entrada
+  5. Trocar mensagens entre eles
+  6. BYTE STUFFING: enviar  ola; tudo bem? a=b
+     A mensagem deve chegar integra, sem quebrar em campos.
+  7. /users  -> lista joao,maria
+  8. /hist 5 -> historico guardado no servidor
+  9. Um cliente faz /join outra  -> deixa de receber as mensagens da sala geral
+ 10. /salas -> lista geral,outra
+ 11. /msg joao oi -> so o joao recebe (mesmo estando em outra sala)
+ 12. /sair em um cliente -> o outro continua funcionando normalmente
+
+ROTEIRO DE TESTE COM AS TELAS
+  1. java -cp bin ChatApp -> "Iniciar servidor" -> "Iniciar servidor".
+  2. "Entrar no chat" duas vezes: joao e maria, ambos na sala geral.
+     O painel do servidor mostra as conexoes, os usuarios e a sala.
+  3. Tentar entrar de novo como maria -> a tela de conexao mostra o erro 02.
+  4. Trocar mensagens (inclusive  ola; tudo bem? a=b).
+  5. Um terceiro cliente entra na sala geral -> ve as mensagens anteriores
+     (historico guardado no servidor).
+  6. Emoticons: digitar  oi :) <3  -> chega como  oi 🙂 💖 ; usar o
+     botao do rostinho para escolher um emoji.
+  7. Arquivos: botao do clipe -> escolher uma imagem -> o outro cliente
+     ve o link, clica, ve a pre-visualizacao e salva. Com
+     /arquivo maria  o arquivo vai so para a maria.
+  8. Criar a sala "outra" pelo campo "nova sala" -> aparece na lista de
+     salas dos outros clientes.
+  9. Duplo clique num usuario -> mensagem privada.
+ 10. No painel do servidor, enviar um aviso -> chega a todos.
+ 11. Fechar uma janela de chat -> os outros recebem "desconectou".
+ 12. "Parar servidor" -> os clientes mostram "Desconectado".
+
+CODIGOS DE ERRO
+  01 comando desconhecido        07 nao esta em nenhuma sala
+  02 apelido em uso              08 mensagem vazia
+  03 login ja realizado          09 quantidade invalida
+  04 apelido nao informado       10 destinatario nao informado
+  05 login necessario            11 usuario nao encontrado
+  06 nome da sala nao informado   12 arquivo vazio ou invalido
+                                 13 arquivo maior que 5 MB
+                                 14 arquivo nao encontrado

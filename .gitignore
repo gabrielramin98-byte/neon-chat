@@ -1,0 +1,15 @@
+# Build
+bin/
+*.class
+
+# Pacote de entrega (copia em docs/)
+entrega/
+
+# Arquivos recebidos pelo cliente de terminal
+recebidos/
+
+# SO / IDE
+.DS_Store
+.idea/
+.vscode/
+*.iml
